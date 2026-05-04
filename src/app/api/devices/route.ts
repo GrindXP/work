@@ -4,20 +4,30 @@ export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    const apiKey = process.env.TAILSCALE_API_KEY;
+    // Get and trim API key to handle any whitespace
+    const rawKey = process.env.TAILSCALE_API_KEY || '';
+    const apiKey = rawKey.trim();
     
-    // Debug: Check if env var exists (without exposing the key)
+    // Debug: Check env vars (without exposing sensitive data)
+    const allEnvVars = Object.keys(process.env).filter(k => k.includes('TAILSCALE') || k.includes('API'));
+    console.log('[API] Available env vars:', allEnvVars);
+    
+    // Debug: Check if env var exists
     const keyExists = !!apiKey;
-    const keyLength = apiKey?.length || 0;
-    const keyPrefix = apiKey ? apiKey.substring(0, 10) + '...' : 'none';
+    const keyLength = apiKey.length;
+    const keyPrefix = apiKey ? apiKey.substring(0, 15) + '...' : 'none';
+    const keyFormat = apiKey.startsWith('tskey-api-') ? 'api-key' : 
+                      apiKey.startsWith('tskey-') ? 'auth-key' : 'unknown';
     
-    console.log(`[API] TAILSCALE_API_KEY exists: ${keyExists}, length: ${keyLength}, prefix: ${keyPrefix}`);
+    console.log(`[API] Key exists: ${keyExists}, length: ${keyLength}, format: ${keyFormat}, prefix: ${keyPrefix}`);
     
     if (!apiKey) {
       return NextResponse.json(
         { 
           error: 'TAILSCALE_API_KEY not configured',
-          debug: { keyExists, keyLength }
+          hint: 'Add TAILSCALE_API_KEY to Vercel Environment Variables',
+          envVarsFound: allEnvVars,
+          rawKeyLength: rawKey.length
         },
         { status: 500 }
       );
@@ -26,6 +36,7 @@ export async function GET() {
     const response = await fetch('https://api.tailscale.com/api/v2/tailnet/-/devices', {
       headers: {
         'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
       },
       cache: 'no-store',
     });
@@ -34,20 +45,21 @@ export async function GET() {
       const errorText = await response.text().catch(() => 'No error details');
       console.log(`[API] Tailscale API error: ${response.status}`, errorText);
       
-      // Provide helpful error messages
-      let errorMessage = `Tailscale API error: ${response.status}`;
-      if (response.status === 401) {
-        errorMessage = 'Invalid Tailscale API key (401). Generate a new key at https://login.tailscale.com/admin/settings/keys';
-      } else if (response.status === 403) {
-        errorMessage = 'API key lacks permissions (403). Ensure key has "Read" access to devices.';
-      }
-      
+      // For 401, the key is reaching Tailscale but being rejected
+      // This could be: wrong key type, expired key, or key doesn't have device:read scope
       return NextResponse.json(
         { 
-          error: errorMessage,
-          status: response.status,
-          keyConfigured: keyExists,
-          keyPrefix: keyPrefix
+          error: `Tailscale API returned ${response.status}`,
+          detail: errorText,
+          keyInfo: {
+            configured: keyExists,
+            format: keyFormat,
+            length: keyLength,
+            prefix: keyPrefix,
+          },
+          hint: response.status === 401 
+            ? 'Key is reaching Tailscale but rejected. Try: 1) Generate NEW key, 2) Ensure key type is "API access token" not auth key, 3) Verify key has "Devices: Read" scope' 
+            : 'Check API permissions'
         },
         { status: response.status }
       );
