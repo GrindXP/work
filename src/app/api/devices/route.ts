@@ -6,9 +6,19 @@ export async function GET() {
   try {
     const apiKey = process.env.TAILSCALE_API_KEY;
     
+    // Debug: Check if env var exists (without exposing the key)
+    const keyExists = !!apiKey;
+    const keyLength = apiKey?.length || 0;
+    const keyPrefix = apiKey ? apiKey.substring(0, 10) + '...' : 'none';
+    
+    console.log(`[API] TAILSCALE_API_KEY exists: ${keyExists}, length: ${keyLength}, prefix: ${keyPrefix}`);
+    
     if (!apiKey) {
       return NextResponse.json(
-        { error: 'TAILSCALE_API_KEY not configured' },
+        { 
+          error: 'TAILSCALE_API_KEY not configured',
+          debug: { keyExists, keyLength }
+        },
         { status: 500 }
       );
     }
@@ -21,8 +31,24 @@ export async function GET() {
     });
 
     if (!response.ok) {
+      const errorText = await response.text().catch(() => 'No error details');
+      console.log(`[API] Tailscale API error: ${response.status}`, errorText);
+      
+      // Provide helpful error messages
+      let errorMessage = `Tailscale API error: ${response.status}`;
+      if (response.status === 401) {
+        errorMessage = 'Invalid Tailscale API key (401). Generate a new key at https://login.tailscale.com/admin/settings/keys';
+      } else if (response.status === 403) {
+        errorMessage = 'API key lacks permissions (403). Ensure key has "Read" access to devices.';
+      }
+      
       return NextResponse.json(
-        { error: `Tailscale API error: ${response.status}` },
+        { 
+          error: errorMessage,
+          status: response.status,
+          keyConfigured: keyExists,
+          keyPrefix: keyPrefix
+        },
         { status: response.status }
       );
     }
