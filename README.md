@@ -3,11 +3,11 @@
 Next.js app to view active Tailscale devices via API.
 
 ## Features
-- `/api/devices` - Returns active Tailscale devices with IPs
+- `/api/devices` - Returns active Tailscale devices with IPs (server-side API)
 - Web UI to view device list
-- Auto-refreshes on load
+- Auto-fetches on load
 
-## Setup
+## Local Development
 
 1. Set environment variable:
 ```bash
@@ -21,22 +21,24 @@ npm run dev
 
 3. Open http://localhost:3000
 
-## Deploy to GitHub Pages
+## Deploy to Vercel
 
-1. Update `next.config.js`:
-```js
-const nextConfig = {
-  output: 'export',
-  distDir: 'dist',
-}
-```
-
-2. Build:
+1. Push to GitHub:
 ```bash
-npm run build
+git push -u origin main
 ```
 
-3. Push to GitHub work repo.
+2. Connect repo to [Vercel](https://vercel.com)
+
+3. Add environment variable in Vercel Dashboard:
+   - Name: `TAILSCALE_API_KEY`
+   - Value: Your Tailscale API key (from https://login.tailscale.com/admin/settings/keys)
+
+4. Deploy!
+
+## API Endpoint
+
+- `GET /api/devices` - Returns active devices with Tailscale IPs
 
 ---
 

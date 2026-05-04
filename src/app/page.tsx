@@ -16,87 +16,31 @@ interface DevicesResponse {
   error?: string;
 }
 
-// Get API key from environment or prompt
-const getApiKey = () => {
-  if (typeof window !== 'undefined') {
-    // Try to get from localStorage first
-    const stored = localStorage.getItem('TAILSCALE_API_KEY');
-    if (stored) return stored;
-  }
-  // Otherwise use env (will be empty in browser without build-time env var)
-  return process.env.NEXT_PUBLIC_TAILSCALE_API_KEY || '';
-};
-
 export default function Home() {
   const [devices, setDevices] = useState<DevicesResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [apiKey, setApiKey] = useState('');
-
-  useEffect(() => {
-    setApiKey(getApiKey());
-  }, []);
-
-  const saveApiKey = (key: string) => {
-    setApiKey(key);
-    localStorage.setItem('TAILSCALE_API_KEY', key);
-  };
 
   const fetchDevices = async () => {
     setLoading(true);
     setError(null);
     
-    const key = apiKey || getApiKey();
-    if (!key) {
-      setError('Please enter your Tailscale API key');
-      setLoading(false);
-      return;
-    }
-
     try {
-      const response = await fetch('https://api.tailscale.com/api/v2/tailnet/-/devices', {
-        headers: {
-          'Authorization': `Bearer ${key}`,
-        },
+      // Call local API route (uses TAILSCALE_API_KEY server-side)
+      const response = await fetch('/api/devices', {
+        cache: 'no-store',
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        if (response.status === 401) {
-          setError('Invalid API key. Please check your Tailscale API key.');
-        } else {
-          setError(`Tailscale API error: ${response.status}`);
-        }
+        setError(data.error || 'Failed to fetch devices');
         setDevices(null);
         setLoading(false);
         return;
       }
 
-      const data = await response.json();
-      
-      // Extract active devices with their IPs
-      const allDevices = data.devices?.map((device: any) => ({
-        name: device.name,
-        hostname: device.hostname,
-        addresses: device.addresses,
-        os: device.os,
-        online: device.online,
-      })) || [];
-
-      // Filter only online devices and extract Tailscale IPs
-      const activeDevices = allDevices
-        .filter((d: any) => d.online)
-        .map((d: any) => ({
-          name: d.name,
-          hostname: d.hostname,
-          ips: d.addresses.filter((ip: string) => ip.startsWith('100.')),
-          os: d.os,
-        }));
-
-      setDevices({
-        total: allDevices.length,
-        active: activeDevices.length,
-        devices: activeDevices,
-      });
+      setDevices(data);
     } catch (err) {
       setError('Network error');
       setDevices(null);
@@ -104,6 +48,11 @@ export default function Home() {
       setLoading(false);
     }
   };
+
+  // Auto-fetch on load
+  useEffect(() => {
+    fetchDevices();
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -117,54 +66,22 @@ export default function Home() {
           </p>
         </div>
 
-        {/* API Key Input */}
-        <div className="mb-6 p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Tailscale API Key
-          </label>
-          <div className="flex gap-2">
-            <input
-              type="password"
-              value={apiKey}
-              onChange={(e) => saveApiKey(e.target.value)}
-              placeholder="tskey-api-xxxxxxxx"
-              className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-            />
-          </div>
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            Get your API key from{' '}
-            <a 
-              href="https://login.tailscale.com/admin/settings/keys" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="text-blue-600 hover:underline"
-            >
-              Tailscale Admin Console
-            </a>
-            . Key is stored locally in your browser.
-          </p>
-        </div>
-
         <div className="mb-6 flex gap-4">
           <button
             onClick={fetchDevices}
             disabled={loading}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            {loading ? 'Loading...' : 'Fetch Devices'}
+            {loading ? 'Loading...' : 'Refresh Devices'}
           </button>
           
-          <button
-            onClick={() => {
-              const headers = apiKey ? { 'Authorization': `Bearer ${apiKey}` } : undefined;
-              fetch('https://api.tailscale.com/api/v2/tailnet/-/devices', { headers })
-                .then(r => r.json())
-                .then(d => console.log('Raw API response:', d));
-            }}
-            className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors"
+          <a
+            href="/api/devices"
+            target="_blank"
+            className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors flex items-center"
           >
-            Test API (Console)
-          </button>
+            API JSON
+          </a>
         </div>
 
         {error && (
