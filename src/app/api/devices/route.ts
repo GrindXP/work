@@ -67,30 +67,26 @@ export async function GET() {
 
     const data = await response.json();
     
-    // Extract active devices with their IPs
-    const devices = data.devices?.map((device: any) => ({
-      name: device.name,
-      hostname: device.hostname,
-      addresses: device.addresses,
-      os: device.os,
-      online: device.online,
-      lastSeen: device.lastSeen,
-    })) || [];
-
-    // Filter only online devices and extract IPs
-    const activeDevices = devices
-      .filter((d: any) => d.online)
+    // Extract all devices with their IPs (not just online ones)
+    const allDevices = data.devices || [];
+    
+    // Map all devices with Tailscale IPs (100.x.x.x)
+    const devicesWithIPs = allDevices
       .map((d: any) => ({
         name: d.name,
         hostname: d.hostname,
-        ips: d.addresses.filter((ip: string) => ip.startsWith('100.')),
+        ips: (d.addresses || []).filter((ip: string) => ip.startsWith('100.')),
         os: d.os,
-      }));
+        online: d.online,
+        lastSeen: d.lastSeen,
+      }))
+      .filter((d: any) => d.ips.length > 0); // Only devices with Tailscale IPs
 
     return NextResponse.json({
-      total: devices.length,
-      active: activeDevices.length,
-      devices: activeDevices,
+      total: allDevices.length,
+      withTailscaleIPs: devicesWithIPs.length,
+      onlineCount: devicesWithIPs.filter((d: any) => d.online).length,
+      devices: devicesWithIPs,
     });
   } catch (error) {
     console.error('Error fetching devices:', error);
